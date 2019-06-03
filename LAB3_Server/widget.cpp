@@ -66,7 +66,7 @@ Widget::~Widget()
 
 }
 
-void Widget::sendFortune(QTcpSocket *clientConnection)
+void Widget::sendMessage(QTcpSocket *clientConnection)
 {
     QByteArray block;
     QDataStream out(&block, QIODevice::WriteOnly);
@@ -76,7 +76,7 @@ void Widget::sendFortune(QTcpSocket *clientConnection)
     clientConnection->write(block);
 }
 
-void Widget::sendFortunes(QTcpSocket *clientConnection)
+void Widget::sendAllMessages(QTcpSocket *clientConnection)
 {
     QByteArray block;
     QDataStream out(&block, QIODevice::WriteOnly);
@@ -93,12 +93,11 @@ void Widget::handleNewConnection()
     clients.push_back(clientConnection);
     in.setDevice(clientConnection);
     connect(clientConnection, &QAbstractSocket::readyRead, this, &Widget::handleReadyRead);
-    sendFortunes(clientConnection);
+    sendAllMessages(clientConnection);
 }
 
 void Widget::handleReadyRead()
 {
-    qDebug() << "Read fortune is called";
     QString fortune;
 
     // Read fortune from client
@@ -106,13 +105,12 @@ void Widget::handleReadyRead()
     in >> fortune;
     if (!in.commitTransaction())
         return;
-    qDebug() << "Fortune: " << fortune;
     if(fortunes.size() == 50){
         fortunes.pop_front();
     }
     fortunes.push_back(fortune);
     for(auto client : clients){
-        sendFortune(client);
+        sendMessage(client);
     }
 }
 

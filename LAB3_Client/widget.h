@@ -24,24 +24,22 @@ public:
 
 private slots:
     void setConnection();
-    void openConnection();
-    void requestNewFortune();
-    void readFortune();
+    void sendMessage();
+    void handleMsgFromServer();
     void displayError(QAbstractSocket::SocketError socketError);
-    void enableFortuneButtons();
+    void enableButtons();
 
 private:
     QComboBox *hostCombo = nullptr;
     QLineEdit *portLineEdit = nullptr;
-    QLineEdit *fortuneLineEdit = nullptr;
-    QPlainTextEdit *fortunesEdit = nullptr;
+    QLineEdit *messageEditText = nullptr;
+    QPlainTextEdit *messagesBox = nullptr;
     QPushButton *connectionButton = nullptr;
     QPushButton *sendMessageButton = nullptr;
 
     QTcpSocket *tcpSocket = nullptr;
     QDataStream in;
     QStringList fortunes;
-    bool connectionFlag = 0;
 };
 
 #endif // WIDGET_H

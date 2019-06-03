@@ -22,8 +22,8 @@ public:
     ~Widget();
 
 private slots:
-    void sendFortune(QTcpSocket *clientConnection);
-    void sendFortunes(QTcpSocket *clientConnection);
+    void sendMessage(QTcpSocket *clientConnection);
+    void sendAllMessages(QTcpSocket *clientConnection);
     void handleNewConnection();
     void handleReadyRead();
     void dropClient(QTcpSocket *client);
