@@ -11,8 +11,9 @@ Widget::Widget(QWidget *parent)
     : QWidget(parent)
     , hostCombo(new QComboBox)
     , portLineEdit(new QLineEdit)
-    , getFortuneButton(new QPushButton("Get Fortune"))
-    , setFortuneButton(new QPushButton("Set Fortune"))
+    , fortunesEdit(new QPlainTextEdit())
+    , connectionButton(new QPushButton("Connect"))
+    , sendMessageButton(new QPushButton("Send"))
     , tcpSocket(new QTcpSocket(this))
 {
     qDebug() << "Constructor is called";
@@ -47,11 +48,14 @@ Widget::Widget(QWidget *parent)
     auto portLabel = new QLabel("Server port:");
     portLabel->setBuddy(portLineEdit);
 
-    fortuneLineEdit = new QLineEdit("This examples requires that you run the "
-                                "Fortune Server example as well.");
+    fortuneLineEdit = new QLineEdit();
 
-    getFortuneButton->setDefault(true);
-    getFortuneButton->setEnabled(false);
+
+    fortunesEdit = new QPlainTextEdit();
+    fortunesEdit->setReadOnly(true);
+
+    connectionButton->setDefault(true);
+    connectionButton->setEnabled(false);
 
     auto quitButton = new QPushButton("Quit");
 
@@ -64,13 +68,12 @@ Widget::Widget(QWidget *parent)
             this, &Widget::enableFortuneButtons);
     connect(fortuneLineEdit, &QLineEdit::textChanged,
             this, &Widget::enableFortuneButtons);
-    connect(getFortuneButton, &QAbstractButton::clicked,
-            this, &Widget::getFortune);
-    connect(setFortuneButton, &QAbstractButton::clicked,
-            this, &Widget::setFortune);
+    connect(connectionButton, &QAbstractButton::clicked,
+            this, &Widget::setConnection);
+    connect(sendMessageButton, &QAbstractButton::clicked,
+            this, &Widget::requestNewFortune);
     connect(quitButton, &QAbstractButton::clicked, this, &QWidget::close);
 
-    connect(tcpSocket, &QAbstractSocket::connected, this, &Widget::requestNewFortune);
     connect(tcpSocket, QOverload<QAbstractSocket::SocketError>::of(&QAbstractSocket::error),
             this, &Widget::displayError);
 
@@ -79,10 +82,11 @@ Widget::Widget(QWidget *parent)
     mainLayout->addWidget(hostCombo, 0, 1);
     mainLayout->addWidget(portLabel, 1, 0);
     mainLayout->addWidget(portLineEdit, 1, 1);
-    mainLayout->addWidget(fortuneLineEdit, 2, 0, 1, 2);
-    mainLayout->addWidget(getFortuneButton, 3, 1, 1, 1);
-    mainLayout->addWidget(setFortuneButton, 4, 1, 1, 1);
-    mainLayout->addWidget(quitButton, 3, 0, 1, 1);
+    mainLayout->addWidget(fortunesEdit, 2, 0);
+    mainLayout->addWidget(connectionButton, 2, 1, 1, 1);
+    mainLayout->addWidget(fortuneLineEdit, 3, 0, 1, 2);
+    mainLayout->addWidget(sendMessageButton, 4, 0, 1, 1);
+    mainLayout->addWidget(quitButton, 4, 1, 1, 1);
 
     portLineEdit->setFocus();
 
@@ -94,23 +98,21 @@ Widget::~Widget()
 
 }
 
-void Widget::getFortune()
+void Widget::setConnection()
 {
-    getFortuneFlag = true;
     openConnection();
-}
-
-void Widget::setFortune()
-{
-    setFortuneFlag = true;
-    openConnection();
+    QByteArray block;
+    QDataStream out(&block, QIODevice::WriteOnly);
+    out.setVersion(QDataStream::Qt_5_10);
+    connect(tcpSocket, &QAbstractSocket::readyRead,
+            this, &Widget::readFortune);
 }
 
 void Widget::openConnection()
 {
     qDebug() << "Open connection is called";
-    getFortuneButton->setEnabled(false);
-    setFortuneButton->setEnabled(false);
+    connectionButton->setEnabled(false);
+    sendMessageButton->setEnabled(false);
     tcpSocket->abort();
     tcpSocket->connectToHost(hostCombo->currentText(),
                              portLineEdit->text().toInt());
@@ -123,19 +125,7 @@ void Widget::requestNewFortune()
     QDataStream out(&block, QIODevice::WriteOnly);
     out.setVersion(QDataStream::Qt_5_10);
 
-    if (getFortuneFlag) {
-        getFortuneFlag = false;
-        out << READ_FORTUNE_MARKER;
-        connect(tcpSocket, &QAbstractSocket::readyRead,
-                this, &Widget::readFortune);
-    } else if (setFortuneFlag) {
-        setFortuneFlag = false;
-        out << WRITE_FORTUNE_MARKER;
-        out << fortuneLineEdit->text();
-    } else {
-        qDebug() << "No action is required";
-    }
-
+    out << fortuneLineEdit->text();
 
     tcpSocket->write(block);
     tcpSocket->flush();
@@ -146,24 +136,37 @@ void Widget::readFortune()
     qDebug() << "Read fortune is called";
     in.startTransaction();
 
-    QString nextFortune;
-    in >> nextFortune;
+    int trType;
+    in >> trType;
+    if(trType == 1){
+        QString nextFortune;
+        in >> nextFortune;
+        qDebug() << nextFortune;
+        if (!in.commitTransaction())
+            return;
+        qDebug() << nextFortune;
+        fortunes.push_back(nextFortune);
+        fortunesEdit->clear();
+        for(auto fortune : fortunes){
+            fortunesEdit->appendPlainText(fortune);
+        }
+    } else {
+        QStringList nextFortune;
+        in >> nextFortune;
 
-    if (!in.commitTransaction())
-        return;
+        qDebug() << nextFortune;
+        if (!in.commitTransaction())
+            return;
 
-    if (nextFortune == currentFortune) {
-        getFortuneFlag = true;
-        QTimer::singleShot(0, this, &Widget::openConnection);
-        return;
+        fortunes = nextFortune;
+        fortunesEdit->clear();
+        for(auto fortune : fortunes){
+            fortunesEdit->appendPlainText(fortune);
+        }
     }
 
-    currentFortune = nextFortune;
-    fortuneLineEdit->setText(currentFortune);
-    getFortuneButton->setEnabled(true);
-    setFortuneButton->setEnabled(true);
-    disconnect(tcpSocket, &QAbstractSocket::readyRead,
-               this, &Widget::readFortune);
+    connectionButton->setEnabled(true);
+    sendMessageButton->setEnabled(true);
 }
 
 void Widget::displayError(QAbstractSocket::SocketError socketError)
@@ -189,16 +192,15 @@ void Widget::displayError(QAbstractSocket::SocketError socketError)
                                  .arg(tcpSocket->errorString()));
     }
 
-    getFortuneButton->setEnabled(true);
-    setFortuneButton->setEnabled(true);
+    connectionButton->setEnabled(true);
+    sendMessageButton->setEnabled(true);
 }
 
 void Widget::enableFortuneButtons()
 {
-    getFortuneButton->setEnabled(!hostCombo->currentText().isEmpty() &&
-                                 !portLineEdit->text().isEmpty() &&
-                                 !fortuneLineEdit->text().isEmpty());
-    setFortuneButton->setEnabled(!hostCombo->currentText().isEmpty() &&
+    connectionButton->setEnabled(!hostCombo->currentText().isEmpty() &&
+                                 !portLineEdit->text().isEmpty());
+    sendMessageButton->setEnabled(!hostCombo->currentText().isEmpty() &&
                                  !portLineEdit->text().isEmpty() &&
                                  !fortuneLineEdit->text().isEmpty());
 

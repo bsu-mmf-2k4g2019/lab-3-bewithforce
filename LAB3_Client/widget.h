@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QDataStream>
 #include <QTcpSocket>
+#include <QPlainTextEdit>
 
 // int is used for this constants
 #define READ_FORTUNE_MARKER (0u)
@@ -22,8 +23,7 @@ public:
     ~Widget();
 
 private slots:
-    void getFortune();
-    void setFortune();
+    void setConnection();
     void openConnection();
     void requestNewFortune();
     void readFortune();
@@ -34,14 +34,14 @@ private:
     QComboBox *hostCombo = nullptr;
     QLineEdit *portLineEdit = nullptr;
     QLineEdit *fortuneLineEdit = nullptr;
-    QPushButton *getFortuneButton = nullptr;
-    QPushButton *setFortuneButton = nullptr;
+    QPlainTextEdit *fortunesEdit = nullptr;
+    QPushButton *connectionButton = nullptr;
+    QPushButton *sendMessageButton = nullptr;
 
     QTcpSocket *tcpSocket = nullptr;
     QDataStream in;
-    QString currentFortune;
-    bool getFortuneFlag = 0;
-    bool setFortuneFlag = 0;
+    QStringList fortunes;
+    bool connectionFlag = 0;
 };
 
 #endif // WIDGET_H

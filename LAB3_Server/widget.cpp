@@ -46,7 +46,7 @@ Widget::Widget(QWidget *parent)
 
     auto quitButton = new QPushButton(tr("Quit"));
     connect(quitButton, &QAbstractButton::clicked, this, &QWidget::close);
-    connect(tcpServer, &QTcpServer::newConnection, this, &Widget::hanleNewConnection);
+    connect(tcpServer, &QTcpServer::newConnection, this, &Widget::handleNewConnection);
 
     auto buttonLayout = new QHBoxLayout;
     buttonLayout->addStretch(1);
@@ -58,10 +58,6 @@ Widget::Widget(QWidget *parent)
     mainLayout->addWidget(statusLabel);
     mainLayout->addLayout(buttonLayout);
 
-    // Initialize fortunes
-    fortunes << "You've been leading a dog's life. Stay off the furniture."
-             << "Computers are not intelligent. They only think they are.";
-
     in.setVersion(QDataStream::Qt_4_0);
 }
 
@@ -70,64 +66,62 @@ Widget::~Widget()
 
 }
 
-void Widget::sendFortune()
+void Widget::sendFortune(QTcpSocket *clientConnection)
+{
+    QByteArray block;
+    QDataStream out(&block, QIODevice::WriteOnly);
+    out.setVersion(QDataStream::Qt_4_0);
+    out << 1;
+    out << fortunes[fortunes.size() - 1];
+    clientConnection->write(block);
+}
+
+void Widget::sendFortunes(QTcpSocket *clientConnection)
 {
     QByteArray block;
     QDataStream out(&block, QIODevice::WriteOnly);
     out.setVersion(QDataStream::Qt_4_0);
 
-    out << fortunes[QRandomGenerator::global()->bounded(fortunes.size())];
-
-    QTcpSocket *clientConnection = dynamic_cast<QTcpSocket*>(sender());
+    out << 2;
+    out << fortunes;
     clientConnection->write(block);
-
-    dropClient(clientConnection);
 }
 
-void Widget::hanleNewConnection()
+void Widget::handleNewConnection()
 {
     QTcpSocket *clientConnection = tcpServer->nextPendingConnection();
+    clients.push_back(clientConnection);
     in.setDevice(clientConnection);
-    connect(clientConnection, &QAbstractSocket::readyRead, this, &Widget::hanleReadyRead);
+    connect(clientConnection, &QAbstractSocket::readyRead, this, &Widget::handleReadyRead);
+    sendFortunes(clientConnection);
 }
 
-void Widget::hanleReadyRead()
+void Widget::handleReadyRead()
 {
     qDebug() << "Read fortune is called";
+    QString fortune;
 
-    // Read transaction type
-    if (trType == -1) {
-        in.startTransaction();
-        in >> trType;
-        if (!in.commitTransaction())
-            return;
+    // Read fortune from client
+    in.startTransaction();
+    in >> fortune;
+    if (!in.commitTransaction())
+        return;
+    qDebug() << "Fortune: " << fortune;
+    if(fortunes.size() == 50){
+        fortunes.pop_front();
     }
-    qDebug() << "Tr type: " << trType;
-
-    if (trType == READ_FORTUNE_MARKER) {
-        sendFortune();
-    } else if (trType == WRITE_FORTUNE_MARKER) {
-        QString fortune;
-
-        // Read fortune from client
-        in.startTransaction();
-        in >> fortune;
-        if (!in.commitTransaction())
-            return;
-        qDebug() << "Fortune: " << fortune;
-        fortunes.push_back(fortune);
-
-        dropClient(dynamic_cast<QTcpSocket*>(sender()));
-    } else {
-        qDebug() << "Wrong transaction type: " << trType;
+    fortunes.push_back(fortune);
+    for(auto client : clients){
+        sendFortune(client);
     }
 }
 
 void Widget::dropClient(QTcpSocket *client)
 {
     trType = NO_TRANSACTION_TYPE;
-    disconnect(client, &QAbstractSocket::readyRead, this, &Widget::hanleReadyRead);
+    disconnect(client, &QAbstractSocket::readyRead, this, &Widget::handleReadyRead);
     connect(client, &QAbstractSocket::disconnected,
             client, &QObject::deleteLater);
     client->disconnectFromHost();
+    clients.remove(clients.indexOf(client));
 }
